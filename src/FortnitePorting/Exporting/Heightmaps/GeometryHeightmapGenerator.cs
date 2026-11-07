@@ -173,6 +173,10 @@ public sealed class GeometryHeightmapGenerator
         var data = raster.Data;
         var width = raster.Width;
         var height = raster.Height;
+        var (greyPerUnit, _, minZ, _) = CalculateLumaScale(data);
+        // Sea-floor geometry can join a detached island to the main map at the
+        // minimum height even though those pixels are black in the saved PNG.
+        var visibleHeightFloor = minZ + 0.5f / greyPerUnit;
         var visited = new bool[data.Length];
         var queue = new int[data.Length];
         var best = GeometryHeightmapRasterComponent.Empty;
@@ -181,10 +185,10 @@ public sealed class GeometryHeightmapGenerator
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (visited[start] || !float.IsFinite(data[start]))
+            if (visited[start] || !IsVisible(data[start]))
                 continue;
 
-            var current = FloodFillComponent(data, width, height, visited, queue, start, cancellationToken);
+            var current = FloodFillComponent(data, width, height, visited, queue, visibleHeightFloor, start, cancellationToken);
             if (current.Count > best.Count)
                 best = current;
         }
@@ -193,6 +197,8 @@ public sealed class GeometryHeightmapGenerator
             return null;
 
         return RasterComponentToBounds(best, raster);
+
+        bool IsVisible(float value) => float.IsFinite(value) && value > visibleHeightFloor;
     }
 
     private static GeometryHeightmapRasterComponent FloodFillComponent(
@@ -201,6 +207,7 @@ public sealed class GeometryHeightmapGenerator
         int height,
         bool[] visited,
         int[] queue,
+        float visibleHeightFloor,
         int start,
         CancellationToken cancellationToken)
     {
@@ -237,7 +244,7 @@ public sealed class GeometryHeightmapGenerator
 
         void TryQueue(int index, bool canQueue)
         {
-            if (!canQueue || visited[index] || !float.IsFinite(data[index]))
+            if (!canQueue || visited[index] || !float.IsFinite(data[index]) || data[index] <= visibleHeightFloor)
                 return;
 
             visited[index] = true;
