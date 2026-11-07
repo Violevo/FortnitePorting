@@ -10,7 +10,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using CUE4Parse_Conversion.Textures;
-using CUE4Parse_Conversion.Textures.BC;
 using CUE4Parse.Compression;
 using CUE4Parse.Encryption.Aes;
 using CUE4Parse.MappingsProvider;
@@ -47,7 +46,6 @@ using FortnitePorting.Models.CUE4Parse;
 using FortnitePorting.Models.Information;
 using FortnitePorting.Rendering.Preview;
 using FortnitePorting.Shared.Extensions;
-using FortnitePorting.Views;
 using FortnitePorting.Views.Settings;
 using Serilog;
 using UE4Config.Parsing;
@@ -117,7 +115,7 @@ public partial class CUE4ParseService : ObservableObject, IService, IResettable
                     IsPrimary = true,
                     Action = () => TaskService.Run(async () =>
                     {
-                        Navigation.App.Open<SettingsView>();
+                        AppWM.OpenSettings();
                         await Task.Delay(250);
                         Navigation.Settings.Open<InstallationSettingsView>();
                     })
@@ -297,14 +295,6 @@ public partial class CUE4ParseService : ObservableObject, IService, IResettable
             
             file.Delete();
         }
-    }
-    
-    [LoadingStage("Loading Detex", stage: 3, weight: 1)]
-    private async Task InitializeDetex()
-    {
-        var detexPath = Path.Combine(App.DataFolder.FullName, DetexHelper.DLL_NAME);
-        if (!File.Exists(detexPath)) await DetexHelper.LoadDllAsync(detexPath);
-        DetexHelper.Initialize(detexPath);
     }
     
     [LoadingStage("Initializing Provider", stage: 4, weight: 10)]
@@ -738,8 +728,13 @@ public partial class CUE4ParseService : ObservableObject, IService, IResettable
             .FirstOrDefault(loader => loader.ClassNames.Contains(obj.ExportType));
         if (assetLoader is not null && pointer.TryLoad(out var assetObj))
         {
-            icon = (assetLoader.LowResIconHandler(assetObj) ?? assetLoader.HighResIconHandler(assetObj))
-                ?.Decode(maxMipSize: 128)?.ToWriteableBitmap();
+            var iconPath = assetLoader.LowResIconHandler(assetObj) ?? assetLoader.HighResIconHandler(assetObj);
+            if (iconPath is not null
+                && package.Provider is { } provider
+                && provider.TryLoadPackageObject<UTexture2D>(iconPath, out var iconTexture))
+            {
+                icon = iconTexture.Decode(maxMipSize: 128)?.ToWriteableBitmap();
+            }
             displayName = assetLoader.DisplayNameHandler(assetObj);
             return (icon, displayName, exportType);
         }

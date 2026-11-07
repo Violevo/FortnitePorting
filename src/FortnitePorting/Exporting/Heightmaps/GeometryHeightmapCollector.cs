@@ -358,6 +358,7 @@ public sealed class GeometryHeightmapCollector
 
     private sealed class GeometryHeightmapMeshGeometryCache
     {
+        private static readonly ExportOptions ConversionOptions = new(naniteMeshFormat: ENaniteMeshFormat.NoNanite);
         private readonly Dictionary<string, GeometryHeightmapMeshGeometry> _geometries = [];
 
         public GeometryHeightmapMeshGeometry GetOrCreate(UObject source)
@@ -380,22 +381,22 @@ public sealed class GeometryHeightmapCollector
                 {
                     case UStaticMesh staticMesh:
                     {
-                        using var convertedMesh = new StaticMeshDto(staticMesh, naniteFormat: ENaniteMeshFormat.NoNanite);
+                        using var convertedMesh = new StaticMeshDto(staticMesh, ConversionOptions);
                         return FromStaticMesh(convertedMesh);
                     }
                     case USkeletalMesh skeletalMesh:
                     {
-                        using var convertedMesh = new SkeletalMeshDto(skeletalMesh);
+                        using var convertedMesh = new SkeletalMeshDto(skeletalMesh, ConversionOptions);
                         return FromSkeletalMesh(convertedMesh);
                     }
                     case USplineMeshComponent splineMesh:
                     {
-                        using var convertedMesh = new StaticMeshDto(splineMesh);
+                        using var convertedMesh = new StaticMeshDto(splineMesh, ConversionOptions);
                         return FromStaticMesh(convertedMesh);
                     }
                     case ALandscapeProxy landscapeProxy:
                     {
-                        using var convertedMesh = new LandscapeMeshDto(landscapeProxy);
+                        using var convertedMesh = new LandscapeMeshDto(landscapeProxy, ConversionOptions);
                         return FromStaticMesh(convertedMesh);
                     }
                     default:
