@@ -14,6 +14,7 @@ public sealed class GeometryHeightmapGenerator
 {
     private const float EdgeEpsilon = 1e-7f;
     private const float AreaEpsilon = 1e-12f;
+    private const int CropAnalysisResolution = 2048;
 
     public GeometryHeightmapGenerationResult Generate(
         IReadOnlyCollection<GeometryHeightmapMeshInstance> instances,
@@ -53,23 +54,37 @@ public sealed class GeometryHeightmapGenerator
             rasterInstances = ClipInstancesToBounds(sourceInstances, bounds, progress, cancellationToken);
         }
 
-        progress?.Report(new GeometryHeightmapProgress("Rasterizing Heightmap", 0, rasterInstances.Length));
-        var heightmap = Rasterize(rasterInstances, bounds, options, "Rasterizing Heightmap", progress, cancellationToken);
-
+        GeometryHeightmapRasterResult? analysisRaster = null;
+        var cropped = false;
         if (options.CropToMainComponent && !options.IncludeSpawnIsland)
         {
-            var componentBounds = FindPrimaryComponentBounds(heightmap, cancellationToken);
+            // Detect the mainland at a stable resolution so fine detail in large
+            // exports cannot join a detached spawn island to the main component.
+            var analysisOptions = options with { Resolution = Math.Min(options.Resolution, CropAnalysisResolution) };
+            progress?.Report(new GeometryHeightmapProgress("Finding Main Island", 0, rasterInstances.Length));
+            analysisRaster = Rasterize(rasterInstances, bounds, analysisOptions, "Finding Main Island", progress, cancellationToken);
+            var componentBounds = FindPrimaryComponentBounds(analysisRaster, cancellationToken);
             if (componentBounds is not null &&
-                !componentBounds.ApproximatelyEquals(heightmap.Bounds) &&
-                componentBounds.AreaXY < heightmap.Bounds.AreaXY)
+                !componentBounds.ApproximatelyEquals(analysisRaster.Bounds) &&
+                componentBounds.AreaXY < analysisRaster.Bounds.AreaXY)
             {
                 progress?.Report(new GeometryHeightmapProgress("Cropping to Main Island"));
                 bounds = componentBounds;
                 rasterInstances = ClipInstancesToBounds(rasterInstances, bounds, null, cancellationToken);
-
-                progress?.Report(new GeometryHeightmapProgress("Rasterizing Cropped Heightmap", 0, rasterInstances.Length));
-                heightmap = Rasterize(rasterInstances, bounds, options, "Rasterizing Cropped Heightmap", progress, cancellationToken);
+                cropped = true;
             }
+        }
+
+        var rasterStage = cropped ? "Rasterizing Cropped Heightmap" : "Rasterizing Heightmap";
+        GeometryHeightmapRasterResult heightmap;
+        if (!cropped && analysisRaster?.Width == options.Resolution && analysisRaster.Height == options.Resolution)
+        {
+            heightmap = analysisRaster;
+        }
+        else
+        {
+            progress?.Report(new GeometryHeightmapProgress(rasterStage, 0, rasterInstances.Length));
+            heightmap = Rasterize(rasterInstances, bounds, options, rasterStage, progress, cancellationToken);
         }
 
         var (greyPerUnit, greyBase, _, _) = CalculateLumaScale(heightmap.Data);
